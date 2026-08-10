@@ -7,7 +7,7 @@ from vkbottle.bot import Message
 from vkbottle.tools import DocMessagesUploader
 
 # --- НАСТРОЙКИ ---
-BOT_TOKEN = "ВАШ_ТОКЕН"
+BOT_TOKEN = ""
 
 # Список групп для обязательной проверки подписки
 # Формат: {"id группы без минуса": "Название или ссылка"}

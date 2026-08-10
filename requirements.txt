@@ -1,24 +1,24 @@
-aiofiles          24.1.0
-aiohappyeyeballs  2.7.1
-aiohttp           3.14.3
-aiosignal         1.4.0
-annotated-types   0.8.0
-attrs             26.1.0
-choicelib         0.1.5
-colorama          0.4.6
-et_xmlfile        2.0.0
-frozenlist        1.8.0
-idna              3.18
-msgspec           0.21.1
-multidict         6.7.1
-openpyxl          3.1.5
-pip               25.1.1
-propcache         0.5.2
-pydantic          2.13.4
-pydantic_core     2.46.4
-typing_extensions 4.16.0
-typing-inspection 0.4.3
-vbml              1.1.post1
-vkbottle          4.10.0
-vkbottle-types    5.199.99.21
-yarl              1.24.5
+aiofiles==24.1.0
+aiohappyeyeballs==2.7.1
+aiohttp==3.14.3
+aiosignal==1.4.0
+annotated-types==0.8.0
+attrs==26.1.0
+choicelib==0.1.5
+colorama==0.4.6
+et_xmlfile==2.0.0
+frozenlist==1.8.0
+idna==3.18
+msgspec==0.21.1
+multidict==6.7.1
+openpyxl==3.1.5
+pip==25.1.1
+propcache==0.5.2
+pydantic==2.13.4
+pydantic_core==2.46.4
+typing_extensions==4.16.0
+typing-inspection==0.4.3
+vbml==1.1.post1
+vkbottle==4.10.0
+vkbottle-types==5.199.99.21
+yarl==1.24.5

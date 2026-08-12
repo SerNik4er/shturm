@@ -180,9 +180,3 @@ if __name__ == "__main__":
     print("🤖 Бот запущен!")
     print("✅ Нажмите Ctrl+C для остановки")
     asyncio.run(bot.run_polling())
-
-# Запуск бота
-if __name__ == "__main__":
-    print("🤖 Бот запущен!")
-    print("✅ Нажмите Ctrl+C для остановки")
-    bot.run()

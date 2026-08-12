@@ -5,6 +5,10 @@ from datetime import datetime
 from openpyxl import Workbook, load_workbook
 from vkbottle.bot import Bot, Message
 from vkbottle import Keyboard, KeyboardButtonColor, Text
+from dotenv import load_dotenv
+
+# Загружаем переменные из .env
+load_dotenv()
 
 # Отключаем логирование vkbottle (решает проблему с logger.opt)
 logging.getLogger("vkbottle").setLevel(logging.CRITICAL)

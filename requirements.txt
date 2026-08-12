@@ -21,6 +21,6 @@ python-dotenv==1.0.0
 typing_extensions==4.16.0
 typing-inspection==0.4.3
 vbml==1.1.post1
-vkbottle==4.11.0
+vkbottle==4.10.0
 vkbottle-types==5.199.99.21
 yarl==1.24.5

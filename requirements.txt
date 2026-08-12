@@ -9,6 +9,7 @@ colorama==0.4.6
 et_xmlfile==2.0.0
 frozenlist==1.8.0
 idna==3.18
+loguru==0.7.0
 msgspec==0.21.1
 multidict==6.7.1
 openpyxl==3.1.5
@@ -19,6 +20,6 @@ pydantic_core==2.46.4
 typing_extensions==4.16.0
 typing-inspection==0.4.3
 vbml==1.1.post1
-vkbottle==4.10.0
+vkbottle==4.11.0
 vkbottle-types==5.199.99.21
 yarl==1.24.5

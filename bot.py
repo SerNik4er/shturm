@@ -271,49 +271,78 @@ async def cancel_action(message: Message):
 
 @bot.on.private_message(text="!список")
 async def admin_list_users(message: Message):
-    """Показывает список всех зарегистрированных пользователей"""
+    """Отправляет список зарегистрированных пользователей в виде Excel-файла"""
+    # Проверка прав админа
     if message.from_id not in ADMIN_IDS:
         await message.answer("⛔ У вас нет прав для этой команды.")
         return
-
+    
     if not os.path.exists(DATA_FILE):
         await message.answer("📭 Данных пока нет.")
         return
-
+    
+    # Загружаем основной файл
     wb = load_workbook(DATA_FILE)
     ws = wb.active
-
+    
     if ws.max_row == 1:
         await message.answer("📭 Данных пока нет.")
         return
-
-    users = []
-    for row in range(2, ws.max_row + 1):
-        name = ws.cell(row=row, column=2).value
-        phone = ws.cell(row=row, column=3).value
-        age = ws.cell(row=row, column=4).value
-        city = ws.cell(row=row, column=5).value
-        date = ws.cell(row=row, column=6).value
-
-        users.append(
-            f"👤 {name}\n"
-            f"📱 {phone}\n"
-            f"🎂 {age} лет\n"
-            f"🏙️ {city}\n"
-            f"📅 {date}\n"
-            f"{'─' * 15}"
+    
+    # Создаём временный файл для отправки
+    import tempfile
+    temp_file = tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False)
+    temp_path = temp_file.name
+    temp_file.close()
+    
+    # Копируем данные во временный файл
+    wb.save(temp_path)
+    
+    # Считаем количество пользователей
+    total_users = ws.max_row - 1
+    
+    # Отправляем файл
+    try:
+        # Используем upload_and_send_document для отправки файла
+        from vkbottle.uploader import Uploader
+        uploader = Uploader(bot.api)
+        
+        # Открываем файл и загружаем
+        with open(temp_path, 'rb') as f:
+            attachment = await uploader.document(f, "users_list.xlsx", peer_id=message.peer_id)
+        
+        await message.answer(
+            f"📊 Всего зарегистрировано: {total_users}\n\n"
+            f"📎 Файл с полным списком прикреплён ниже.",
+            attachment=attachment
         )
-
-    total = len(users)
-    users_text = f"📊 Всего зарегистрировано: {total}\n\n"
-
-    if total <= 10:
-        users_text += "\n".join(users)
-    else:
-        users_text += "\n".join(users[:10])
-        users_text += f"\n\n... и ещё {total - 10} пользователей."
-
-    await message.answer(users_text)
+        
+    except Exception as e:
+        # Если не получилось через Uploader - пробуем другой способ
+        await message.answer(
+            f"📊 Всего зарегистрировано: {total_users}\n\n"
+            f"❌ Не удалось отправить файл. Ошибка: {e}"
+        )
+        
+        # Показываем первые 10 пользователей как текстовый список
+        users = []
+        for row in range(2, min(ws.max_row + 1, 12)):
+            name = ws.cell(row=row, column=2).value
+            phone = ws.cell(row=row, column=3).value
+            age = ws.cell(row=row, column=4).value
+            city = ws.cell(row=row, column=5).value
+            date = ws.cell(row=row, column=6).value
+            users.append(
+                f"👤 {name}\n📱 {phone}\n🎂 {age} лет\n🏙️ {city}\n📅 {date}\n{'─'*15}"
+            )
+        await message.answer("\n\n".join(users))
+    
+    finally:
+        # Удаляем временный файл
+        try:
+            os.unlink(temp_path)
+        except:
+            pass
 
 
 @bot.on.private_message(text="!очистить")

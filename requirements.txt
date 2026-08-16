@@ -13,13 +13,14 @@ loguru==0.7.0
 msgspec==0.21.1
 multidict==6.7.1
 openpyxl==3.1.5
-pip==25.1.1
+pip==26.2.1
 propcache==0.5.2
 pydantic==2.13.4
 pydantic_core==2.46.4
+python-dotenv==1.2.3
 typing_extensions==4.16.0
 typing-inspection==0.4.3
 vbml==1.1.post1
-vkbottle==4.11.0
+vkbottle==4.10.0
 vkbottle-types==5.199.99.21
 yarl==1.24.5

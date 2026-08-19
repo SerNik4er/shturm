@@ -269,12 +269,10 @@ async def admin_list_users(message: Message):
         await message.answer("⛔ У вас нет прав для этой команды.")
         return
     
-    # Проверяем, существует ли файл
     if not os.path.exists(DATA_FILE):
         await message.answer("📭 Файл с данными не найден.")
         return
     
-    # Загружаем файл
     try:
         wb = load_workbook(DATA_FILE)
         ws = wb.active
@@ -282,12 +280,10 @@ async def admin_list_users(message: Message):
         await message.answer(f"❌ Ошибка чтения файла: {e}")
         return
     
-    # Проверяем, есть ли записи
     if ws.max_row <= 1:
         await message.answer("📭 Зарегистрированных пользователей пока нет.")
         return
     
-    # Считаем количество
     total_users = ws.max_row - 1
     
     # Создаём временный файл
@@ -321,15 +317,10 @@ async def admin_list_users(message: Message):
         temp_file.write("=" * 60 + "\n")
         temp_file.close()
         
-        # Проверяем размер файла
-        file_size = os.path.getsize(temp_file.name)
-        if file_size == 0:
-            await message.answer("❌ Ошибка: создан пустой файл.")
-            return
-        
-        # Отправляем файл
+        # ===== ПРОБУЕМ ОТПРАВИТЬ ФАЙЛ =====
         try:
-            from vkbottle.uploader import Uploader
+            # ПРАВИЛЬНЫЙ ИМПОРТ!
+            from vkbottle import Uploader
             uploader = Uploader(bot.api)
             
             with open(temp_file.name, 'rb') as f:
@@ -373,7 +364,6 @@ async def admin_list_users(message: Message):
         await message.answer(f"❌ Ошибка: {e}")
     
     finally:
-        # Удаляем временный файл
         try:
             os.unlink(temp_file.name)
         except:

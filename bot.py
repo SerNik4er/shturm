@@ -18,33 +18,39 @@ TOKEN = os.getenv("VK_BOT_TOKEN")
 if not TOKEN:
     raise ValueError("❌ Токен не найден! Установите VK_BOT_TOKEN")
 
-# ID админа (кто может использовать !список и !очистить)
-ADMIN_IDS = [164876852]  # ← ЗАМЕНИТЕ НА СВОЙ VK ID!
-
-# ===== СПИСОК ГРУПП ДЛЯ ПРОВЕРКИ ПОДПИСКИ =====
-# Укажите ID групп, на которые нужно подписаться
-REQUIRED_GROUPS = [
-    237204348,  # Группа 1 (замените на свой ID)
-    108117049,  # Группа "Штурмовой бой для детей | Калуга"
-    # Добавьте сколько нужно групп
+# ===== АДМИНИСТРАТОРЫ (можно добавить несколько ID) =====
+ADMIN_IDS = [
+    164876852,   # Админ 1
+    123456789,   # Админ 2 (ЗАМЕНИТЕ НА РЕАЛЬНЫЙ ID!)
+    # Добавьте сколько нужно
 ]
 
-# Текст для неподписанных пользователей
+# ===== СПИСОК ГРУПП ДЛЯ ПРОВЕРКИ ПОДПИСКИ =====
+REQUIRED_GROUPS = [
+    237204348,
+    108117049,
+]
+
+# ===== СПИСОК МЕРОПРИЯТИЙ ДЛЯ ВЫБОРА =====
+EVENTS = [
+    "Штурмовой бой - дети",
+    "Штурмовой бой - взрослые",
+    "Кёкусинкай - дети",
+    "Кёкусинкай - взрослые",
+    "ММА - дети",
+    "ММА - взрослые",
+    "Другое",
+]
+
 NOT_SUBSCRIBED_TEXT = (
     "❌ Вы не подписаны на обязательные группы!\n\n"
     "Чтобы продолжить, подпишитесь на все группы:\n"
 )
-# ===== КОНЕЦ НАСТРОЕК =====
-
-# Отключаем лишние логи
-logging.getLogger("vkbottle").setLevel(logging.CRITICAL)
-logging.getLogger("loguru").setLevel(logging.CRITICAL)
 
 bot = Bot(token=TOKEN)
 
 DATA_FILE = "users_data.xlsx"
 user_data_temp = {}
-
 
 # ===== ФУНКЦИИ РАБОТЫ С EXCEL =====
 
@@ -54,30 +60,27 @@ def init_excel():
         wb = Workbook()
         ws = wb.active
         ws.title = "Users"
-        headers = ["ID", "Имя", "Телефон", "Возраст", "Город", "Дата регистрации"]
+        headers = ["ID", "ФИО", "Телефон", "Возраст", "Мероприятие", "Дата регистрации"]
         for col, header in enumerate(headers, 1):
             ws.cell(row=1, column=col, value=header)
         wb.save(DATA_FILE)
 
-
-def save_user_data(user_id, name, phone, age, city):
+def save_user_data(user_id, full_name, phone, age, event):
     """Сохраняет данные пользователя в Excel"""
     wb = load_workbook(DATA_FILE)
     ws = wb.active
     row = ws.max_row + 1
     ws.cell(row=row, column=1, value=user_id)
-    ws.cell(row=row, column=2, value=name)
+    ws.cell(row=row, column=2, value=full_name)
     ws.cell(row=row, column=3, value=phone)
     ws.cell(row=row, column=4, value=age)
-    ws.cell(row=row, column=5, value=city)
+    ws.cell(row=row, column=5, value=event)
     ws.cell(row=row, column=6, value=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     wb.save(DATA_FILE)
-
 
 # ===== КЛАВИАТУРЫ =====
 
 def get_main_keyboard():
-    """Главное меню"""
     keyboard = Keyboard(inline=False)
     keyboard.add(Text("📝 Регистрация"), color=KeyboardButtonColor.PRIMARY)
     keyboard.row()
@@ -86,66 +89,57 @@ def get_main_keyboard():
     keyboard.add(Text("❓ Помощь"), color=KeyboardButtonColor.SECONDARY)
     return keyboard
 
-
 def get_cancel_keyboard():
-    """Клавиатура с кнопкой отмены"""
     keyboard = Keyboard(inline=False)
     keyboard.add(Text("❌ Отмена"), color=KeyboardButtonColor.NEGATIVE)
     return keyboard
 
-
 def get_subscription_keyboard():
-    """Клавиатура для проверки подписки"""
     keyboard = Keyboard(inline=False)
     keyboard.add(Text("✅ Проверить подписку"), color=KeyboardButtonColor.POSITIVE)
     keyboard.row()
     keyboard.add(Text("❌ Отмена"), color=KeyboardButtonColor.NEGATIVE)
     return keyboard
 
+def get_event_keyboard():
+    """Клавиатура с выбором мероприятия"""
+    keyboard = Keyboard(inline=False)
+    for i, event in enumerate(EVENTS):
+        keyboard.add(Text(event), color=KeyboardButtonColor.PRIMARY)
+        if i % 2 == 1 and i < len(EVENTS) - 1:
+            keyboard.row()
+    if len(EVENTS) % 2 == 1:
+        keyboard.row()
+    keyboard.add(Text("❌ Отмена"), color=KeyboardButtonColor.NEGATIVE)
+    return keyboard
 
-# ===== ПРОВЕРКА ПОДПИСКИ НА НЕСКОЛЬКО ГРУПП =====
+# ===== ПРОВЕРКА ПОДПИСКИ =====
 
 async def check_subscription(user_id: int) -> tuple:
-    """
-    Проверяет, подписан ли пользователь на все группы из списка.
-    Возвращает: (все_подписаны, список_неподписанных_групп)
-    """
     if not REQUIRED_GROUPS:
         return True, []
-
     not_subscribed = []
-
     for group_id in REQUIRED_GROUPS:
         try:
             response = await bot.api.request(
                 "groups.isMember",
-                {
-                    "group_id": group_id,
-                    "user_id": user_id,
-                    "v": "5.131"
-                }
+                {"group_id": group_id, "user_id": user_id, "v": "5.131"}
             )
             if response.get("response") != 1:
                 not_subscribed.append(group_id)
         except Exception as e:
             logging.error(f"Ошибка проверки подписки на группу {group_id}: {e}")
             not_subscribed.append(group_id)
-
     return len(not_subscribed) == 0, not_subscribed
 
-
 def get_groups_links(groups_ids):
-    """Формирует список ссылок на группы"""
     return "\n".join([f"👉 https://vk.com/club{g}" for g in groups_ids])
-
 
 # ===== ОБЫЧНЫЕ КОМАНДЫ =====
 
 @bot.on.private_message(text=["начать", "старт", "start", "/start"])
 async def start_command(message: Message):
-    """Стартовая команда с проверкой подписки"""
     is_subscribed, not_subscribed = await check_subscription(message.from_id)
-
     if not is_subscribed:
         await message.answer(
             NOT_SUBSCRIBED_TEXT + get_groups_links(not_subscribed) +
@@ -153,18 +147,14 @@ async def start_command(message: Message):
             keyboard=get_subscription_keyboard()
         )
         return
-
     await message.answer(
         "👋 Привет! Я бот для сбора данных.\n\nВыберите действие:",
         keyboard=get_main_keyboard()
     )
 
-
 @bot.on.private_message(text="✅ Проверить подписку")
 async def check_subscription_button(message: Message):
-    """Кнопка проверки подписки"""
     is_subscribed, not_subscribed = await check_subscription(message.from_id)
-
     if is_subscribed:
         await message.answer(
             "✅ Отлично! Вы подписаны на все группы.\n\nТеперь вам доступны все функции:",
@@ -177,11 +167,8 @@ async def check_subscription_button(message: Message):
             keyboard=get_subscription_keyboard()
         )
 
-
 @bot.on.private_message(text="📝 Регистрация")
 async def register_start(message: Message):
-    """Начинает процесс регистрации"""
-    # Проверяем подписку
     is_subscribed, not_subscribed = await check_subscription(message.from_id)
     if not is_subscribed:
         await message.answer(
@@ -190,21 +177,16 @@ async def register_start(message: Message):
             keyboard=get_subscription_keyboard()
         )
         return
-
     if message.peer_id in user_data_temp:
         del user_data_temp[message.peer_id]
-
     await message.answer(
-        "Пожалуйста, введите ваше имя:",
+        "Пожалуйста, введите ваше **ФИО** (полностью):",
         keyboard=get_cancel_keyboard()
     )
-    user_data_temp[message.peer_id] = {"state": "waiting_for_name"}
-
+    user_data_temp[message.peer_id] = {"state": "waiting_for_full_name"}
 
 @bot.on.private_message(text="📊 Посмотреть данные")
 async def view_data(message: Message):
-    """Показывает данные пользователя"""
-    # Проверяем подписку
     is_subscribed, not_subscribed = await check_subscription(message.from_id)
     if not is_subscribed:
         await message.answer(
@@ -213,39 +195,32 @@ async def view_data(message: Message):
             keyboard=get_subscription_keyboard()
         )
         return
-
     if not os.path.exists(DATA_FILE):
         await message.answer("📭 Данных пока нет.")
         return
-
     wb = load_workbook(DATA_FILE)
     ws = wb.active
-
     if ws.max_row == 1:
         await message.answer("📭 Данных пока нет.")
         return
-
     for row in range(2, ws.max_row + 1):
         if ws.cell(row=row, column=1).value == message.from_id:
             await message.answer(
                 f"📋 Ваши данные:\n\n"
-                f"👤 Имя: {ws.cell(row=row, column=2).value}\n"
+                f"👤 ФИО: {ws.cell(row=row, column=2).value}\n"
                 f"📱 Телефон: {ws.cell(row=row, column=3).value}\n"
                 f"🎂 Возраст: {ws.cell(row=row, column=4).value}\n"
-                f"🏙️ Город: {ws.cell(row=row, column=5).value}",
+                f"🏟️ Мероприятие: {ws.cell(row=row, column=5).value}",
                 keyboard=get_main_keyboard()
             )
             return
-
     await message.answer(
         "❌ Вы ещё не зарегистрированы!\nНажмите '📝 Регистрация'",
         keyboard=get_main_keyboard()
     )
 
-
 @bot.on.private_message(text="❓ Помощь")
 async def help_command(message: Message):
-    """Показывает справку"""
     await message.answer(
         "🤖 Инструкция:\n\n"
         "📝 Регистрация - заполнить анкету\n"
@@ -258,21 +233,17 @@ async def help_command(message: Message):
         keyboard=get_main_keyboard()
     )
 
-
 @bot.on.private_message(text="❌ Отмена")
 async def cancel_action(message: Message):
-    """Отменяет текущее действие"""
     if message.peer_id in user_data_temp:
         del user_data_temp[message.peer_id]
     await message.answer("✅ Действие отменено", keyboard=get_main_keyboard())
-
 
 # ===== АДМИН-КОМАНДЫ =====
 
 @bot.on.private_message(text="!список")
 async def admin_list_users(message: Message):
-    """Отправляет список зарегистрированных пользователей в виде текстового файла"""
-    # Проверка прав админа
+    """Отправляет список зарегистрированных пользователей текстом"""
     if message.from_id not in ADMIN_IDS:
         await message.answer("⛔ У вас нет прав для этой команды.")
         return
@@ -288,123 +259,44 @@ async def admin_list_users(message: Message):
         await message.answer("📭 Данных пока нет.")
         return
     
-    # Создаём текстовый файл со списком
-    import tempfile
-    temp_file = tempfile.NamedTemporaryFile(suffix='.txt', mode='w', encoding='utf-8', delete=False)
-    
-    # Записываем заголовок
-    temp_file.write("=" * 50 + "\n")
-    temp_file.write("СПИСОК ЗАРЕГИСТРИРОВАННЫХ ПОЛЬЗОВАТЕЛЕЙ\n")
-    temp_file.write("=" * 50 + "\n\n")
-    
-    total_users = 0
+    # Собираем всех пользователей в текст
+    users = []
     for row in range(2, ws.max_row + 1):
-        user_id = ws.cell(row=row, column=1).value
-        name = ws.cell(row=row, column=2).value
+        full_name = ws.cell(row=row, column=2).value
         phone = ws.cell(row=row, column=3).value
         age = ws.cell(row=row, column=4).value
-        city = ws.cell(row=row, column=5).value
+        event = ws.cell(row=row, column=5).value
         date = ws.cell(row=row, column=6).value
         
-        temp_file.write(f"#{row-1}\n")
-        temp_file.write(f"👤 Имя: {name}\n")
-        temp_file.write(f"🆔 VK ID: {user_id}\n")
-        temp_file.write(f"📱 Телефон: {phone}\n")
-        temp_file.write(f"🎂 Возраст: {age} лет\n")
-        temp_file.write(f"🏙️ Город: {city}\n")
-        temp_file.write(f"📅 Дата регистрации: {date}\n")
-        temp_file.write("─" * 30 + "\n\n")
-        total_users += 1
-    
-    temp_file.write(f"\n{'=' * 30}\n")
-    temp_file.write(f"Всего пользователей: {total_users}\n")
-    temp_file.close()
-    
-    # Отправляем файл через VK API напрямую
-    try:
-        # Открываем файл для чтения
-        with open(temp_file.name, 'rb') as f:
-            file_data = f.read()
-        
-        # Получаем сервер для загрузки документа
-        upload_server = await bot.api.request(
-            "docs.getUploadServer",
-            {"type": "doc", "peer_id": message.peer_id}
+        users.append(
+            f"👤 {full_name}\n"
+            f"📱 {phone}\n"
+            f"🎂 {age} лет\n"
+            f"🏟️ {event}\n"
+            f"📅 {date}\n"
+            f"{'─'*20}"
         )
-        
-        # Загружаем файл
-        import aiohttp
-        async with aiohttp.ClientSession() as session:
-            form_data = aiohttp.FormData()
-            form_data.add_field(
-                'file',
-                file_data,
-                filename='users_list.txt',
-                content_type='text/plain'
-            )
-            async with session.post(
-                upload_server['response']['upload_url'],
-                data=form_data
-            ) as response:
-                upload_result = await response.json()
-        
-        # Сохраняем документ
-        save_result = await bot.api.request(
-            "docs.save",
-            {
-                "file": upload_result['file'],
-                "title": "users_list.txt"
-            }
-        )
-        
-        # Получаем attachment
-        doc = save_result['response'][0]
-        attachment = f"doc{doc['owner_id']}_{doc['id']}"
-        
-        await message.answer(
-            f"📊 Всего зарегистрировано: {total_users}\n\n📎 Файл с полным списком прикреплён ниже.",
-            attachment=attachment
-        )
-        
-    except Exception as e:
-        # Если файл не отправился - показываем первые 10 пользователей текстом
-        await message.answer(f"❌ Не удалось отправить файл.\n\nПоказываю первых 10 пользователей:")
-        
-        users = []
-        for row in range(2, min(ws.max_row + 1, 12)):
-            name = ws.cell(row=row, column=2).value
-            phone = ws.cell(row=row, column=3).value
-            age = ws.cell(row=row, column=4).value
-            city = ws.cell(row=row, column=5).value
-            date = ws.cell(row=row, column=6).value
-            users.append(
-                f"👤 {name}\n📱 {phone}\n🎂 {age} лет\n🏙️ {city}\n📅 {date}\n{'─'*15}"
-            )
-        
-        if users:
-            await message.answer("\n\n".join(users))
-        else:
-            await message.answer("📭 Данных пока нет.")
     
-    finally:
-        # Удаляем временный файл
-        try:
-            os.unlink(temp_file.name)
-        except:
-            pass
-
+    total = len(users)
+    users_text = f"📊 Всего зарегистрировано: {total}\n\n"
+    
+    # Отправляем первых 30 пользователей (ВК не даёт больше)
+    if total <= 30:
+        users_text += "\n\n".join(users)
+        await message.answer(users_text)
+    else:
+        users_text += "\n\n".join(users[:30])
+        users_text += f"\n\n... и ещё {total - 30} пользователей.\n\n📎 Полный список в Excel файле."
+        await message.answer(users_text)
 
 @bot.on.private_message(text="!очистить")
 async def admin_clear_users(message: Message):
-    """Очищает все данные (с подтверждением)"""
     if message.from_id not in ADMIN_IDS:
         await message.answer("⛔ У вас нет прав для этой команды.")
         return
-
     if not os.path.exists(DATA_FILE):
         await message.answer("📭 Данных пока нет.")
         return
-
     await message.answer(
         "⚠️ ВНИМАНИЕ! Вы уверены, что хотите удалить ВСЕ данные?\n\n"
         "Для подтверждения напишите: **да, очистить**\n"
@@ -412,14 +304,10 @@ async def admin_clear_users(message: Message):
     )
     user_data_temp[message.peer_id] = {"state": "waiting_for_clear"}
 
-
 # ===== ГЛАВНЫЙ ОБРАБОТЧИК СОСТОЯНИЙ =====
 
 @bot.on.private_message()
 async def handle_all_messages(message: Message):
-    """Обрабатывает все остальные сообщения (анкетирование, подтверждения)"""
-
-    # Если нет состояния - показываем главное меню
     if message.peer_id not in user_data_temp:
         await message.answer(
             "❓ Неизвестная команда.\nИспользуйте кнопки.",
@@ -432,7 +320,6 @@ async def handle_all_messages(message: Message):
     # ===== ПОДТВЕРЖДЕНИЕ ОЧИСТКИ =====
     if current_state == "waiting_for_clear":
         text = message.text.strip().lower()
-
         if text == "да, очистить":
             if os.path.exists(DATA_FILE):
                 os.remove(DATA_FILE)
@@ -440,12 +327,10 @@ async def handle_all_messages(message: Message):
             await message.answer("✅ Все данные успешно очищены!")
             del user_data_temp[message.peer_id]
             return
-
         elif text == "отмена":
             await message.answer("❌ Очистка отменена.")
             del user_data_temp[message.peer_id]
             return
-
         else:
             await message.answer(
                 "❌ Неверная команда.\n"
@@ -454,16 +339,20 @@ async def handle_all_messages(message: Message):
             )
             return
 
-    # ===== АНКЕТИРОВАНИЕ =====
-    if current_state == "waiting_for_name":
-        name = message.text.strip()
-        if len(name) < 2:
-            await message.answer("❌ Имя слишком короткое. Попробуйте ещё раз:")
+    # ===== ФИО =====
+    if current_state == "waiting_for_full_name":
+        full_name = message.text.strip()
+        if len(full_name.split()) < 2:
+            await message.answer("❌ Пожалуйста, введите полное ФИО (Фамилия Имя Отчество):")
             return
-        user_data_temp[message.peer_id]["name"] = name
+        user_data_temp[message.peer_id]["full_name"] = full_name
         user_data_temp[message.peer_id]["state"] = "waiting_for_phone"
-        await message.answer("📱 Введите ваш номер телефона:", keyboard=get_cancel_keyboard())
+        await message.answer(
+            "📱 Введите ваш номер телефона:",
+            keyboard=get_cancel_keyboard()
+        )
 
+    # ===== ТЕЛЕФОН =====
     elif current_state == "waiting_for_phone":
         phone = message.text.strip()
         if len(phone) < 10:
@@ -471,8 +360,12 @@ async def handle_all_messages(message: Message):
             return
         user_data_temp[message.peer_id]["phone"] = phone
         user_data_temp[message.peer_id]["state"] = "waiting_for_age"
-        await message.answer("🎂 Введите ваш возраст:", keyboard=get_cancel_keyboard())
+        await message.answer(
+            "🎂 Введите ваш возраст:",
+            keyboard=get_cancel_keyboard()
+        )
 
+    # ===== ВОЗРАСТ =====
     elif current_state == "waiting_for_age":
         try:
             age = int(message.text.strip())
@@ -482,37 +375,53 @@ async def handle_all_messages(message: Message):
             await message.answer("❌ Введите число от 1 до 150:")
             return
         user_data_temp[message.peer_id]["age"] = age
-        user_data_temp[message.peer_id]["state"] = "waiting_for_city"
-        await message.answer("🏙️ Введите ваш город:", keyboard=get_cancel_keyboard())
+        user_data_temp[message.peer_id]["state"] = "waiting_for_event"
+        await message.answer(
+            "🏟️ Выберите мероприятие:",
+            keyboard=get_event_keyboard()
+        )
 
-    elif current_state == "waiting_for_city":
-        city = message.text.strip()
-        if len(city) < 2:
-            await message.answer("❌ Название города слишком короткое. Попробуйте ещё раз:")
+    # ===== МЕРОПРИЯТИЕ (выбор из списка) =====
+    elif current_state == "waiting_for_event":
+        event = message.text.strip()
+        if event not in EVENTS and event != "❌ Отмена":
+            await message.answer(
+                "❌ Пожалуйста, выберите мероприятие из списка кнопок:",
+                keyboard=get_event_keyboard()
+            )
             return
+        
+        if event == "❌ Отмена":
+            del user_data_temp[message.peer_id]
+            await message.answer("❌ Регистрация отменена.", keyboard=get_main_keyboard())
+            return
+        
         data = user_data_temp[message.peer_id]
         save_user_data(
             message.from_id,
-            data.get("name", "Не указано"),
+            data.get("full_name", "Не указано"),
             data.get("phone", "Не указано"),
             data.get("age", "Не указано"),
-            city
+            event
         )
         del user_data_temp[message.peer_id]
         await message.answer(
-            "✅ Регистрация завершена! 🎉\n\n"
-            "Теперь вы можете посмотреть свои данные через '📊 Посмотреть данные'",
+            f"✅ Регистрация на мероприятие **{event}** завершена! 🎉\n\n"
+            f"Ваши данные:\n"
+            f"👤 ФИО: {data.get('full_name')}\n"
+            f"📱 Телефон: {data.get('phone')}\n"
+            f"🎂 Возраст: {data.get('age')} лет\n"
+            f"🏟️ Мероприятие: {event}\n\n"
+            f"Теперь вы можете посмотреть свои данные через '📊 Посмотреть данные'",
             keyboard=get_main_keyboard()
         )
-
 
 # ===== ЗАПУСК =====
 
 if __name__ == "__main__":
-    # Создаём Excel-файл при старте
     init_excel()
-
     print("🤖 Бот запущен!")
     print(f"✅ Проверяются группы: {REQUIRED_GROUPS}")
+    print(f"✅ Администраторы: {ADMIN_IDS}")
     print("✅ Нажмите Ctrl+C для остановки")
     asyncio.run(bot.run_polling())

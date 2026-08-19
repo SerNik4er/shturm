@@ -263,86 +263,117 @@ async def cancel_action(message: Message):
 
 @bot.on.private_message(text="!список")
 async def admin_list_users(message: Message):
-    """Отправляет список зарегистрированных пользователей в текстовом файле"""
+    """Отправляет список зарегистрированных пользователей"""
+    # Проверка прав админа
     if message.from_id not in ADMIN_IDS:
         await message.answer("⛔ У вас нет прав для этой команды.")
         return
     
+    # Проверяем, существует ли файл
     if not os.path.exists(DATA_FILE):
-        await message.answer("📭 Данных пока нет.")
+        await message.answer("📭 Файл с данными не найден.")
         return
     
-    wb = load_workbook(DATA_FILE)
-    ws = wb.active
-    
-    if ws.max_row == 1:
-        await message.answer("📭 Данных пока нет.")
+    # Загружаем файл
+    try:
+        wb = load_workbook(DATA_FILE)
+        ws = wb.active
+    except Exception as e:
+        await message.answer(f"❌ Ошибка чтения файла: {e}")
         return
     
-    # Создаём текстовый файл
+    # Проверяем, есть ли записи
+    if ws.max_row <= 1:
+        await message.answer("📭 Зарегистрированных пользователей пока нет.")
+        return
+    
+    # Считаем количество
+    total_users = ws.max_row - 1
+    
+    # Создаём временный файл
+    import tempfile
     temp_file = tempfile.NamedTemporaryFile(suffix='.txt', mode='w', encoding='utf-8', delete=False)
     
-    temp_file.write("=" * 60 + "\n")
-    temp_file.write("     СПИСОК ЗАРЕГИСТРИРОВАННЫХ ПОЛЬЗОВАТЕЛЕЙ\n")
-    temp_file.write("=" * 60 + "\n\n")
-    
-    total_users = 0
-    for row in range(2, ws.max_row + 1):
-        full_name = ws.cell(row=row, column=2).value
-        phone = ws.cell(row=row, column=3).value
-        age = ws.cell(row=row, column=4).value
-        event = ws.cell(row=row, column=5).value
-        date = ws.cell(row=row, column=6).value
-        
-        temp_file.write(f"#{row-1}\n")
-        temp_file.write(f"👤 ФИО: {full_name}\n")
-        temp_file.write(f"📱 Телефон: {phone}\n")
-        temp_file.write(f"🎂 Возраст: {age} лет\n")
-        temp_file.write(f"🏟️ Мероприятие: {event}\n")
-        temp_file.write(f"📅 Дата регистрации: {date}\n")
-        temp_file.write("─" * 40 + "\n\n")
-        total_users += 1
-    
-    temp_file.write("\n" + "=" * 60 + "\n")
-    temp_file.write(f"  ИТОГО: {total_users} пользователей\n")
-    temp_file.write("=" * 60 + "\n")
-    temp_file.close()
-    
-    # Отправляем файл
     try:
-        with open(temp_file.name, 'rb') as f:
+        # Записываем заголовок
+        temp_file.write("=" * 60 + "\n")
+        temp_file.write("     СПИСОК ЗАРЕГИСТРИРОВАННЫХ ПОЛЬЗОВАТЕЛЕЙ\n")
+        temp_file.write("=" * 60 + "\n\n")
+        
+        # Записываем всех пользователей
+        for row in range(2, ws.max_row + 1):
+            full_name = ws.cell(row=row, column=2).value or "Не указано"
+            phone = ws.cell(row=row, column=3).value or "Не указан"
+            age = ws.cell(row=row, column=4).value or "Не указан"
+            event = ws.cell(row=row, column=5).value or "Не выбрано"
+            date = ws.cell(row=row, column=6).value or "Не указана"
+            
+            temp_file.write(f"#{row-1}\n")
+            temp_file.write(f"👤 ФИО: {full_name}\n")
+            temp_file.write(f"📱 Телефон: {phone}\n")
+            temp_file.write(f"🎂 Возраст: {age} лет\n")
+            temp_file.write(f"🏟️ Мероприятие: {event}\n")
+            temp_file.write(f"📅 Дата регистрации: {date}\n")
+            temp_file.write("─" * 40 + "\n\n")
+        
+        temp_file.write("\n" + "=" * 60 + "\n")
+        temp_file.write(f"  ИТОГО: {total_users} пользователей\n")
+        temp_file.write("=" * 60 + "\n")
+        temp_file.close()
+        
+        # Проверяем размер файла
+        file_size = os.path.getsize(temp_file.name)
+        if file_size == 0:
+            await message.answer("❌ Ошибка: создан пустой файл.")
+            return
+        
+        # Отправляем файл
+        try:
             from vkbottle.uploader import Uploader
             uploader = Uploader(bot.api)
-            attachment = await uploader.document(
-                document=f,
-                title="users_list.txt",
-                peer_id=message.peer_id
+            
+            with open(temp_file.name, 'rb') as f:
+                attachment = await uploader.document(
+                    document=f,
+                    title="users_list.txt",
+                    peer_id=message.peer_id
+                )
+            
+            await message.answer(
+                f"📊 Всего зарегистрировано: {total_users}\n\n📎 Файл со списком прикреплён ниже.",
+                attachment=attachment
             )
-        
-        await message.answer(
-            f"📊 Всего зарегистрировано: {total_users}\n\n📎 Файл со списком прикреплён ниже.",
-            attachment=attachment
-        )
-        
+            
+        except Exception as e:
+            # Если файл не отправился - показываем список текстом
+            await message.answer(f"⚠️ Не удалось отправить файл. Ошибка: {e}\n\nПоказываю список текстом:")
+            
+            users = []
+            for row in range(2, min(ws.max_row + 1, 20)):
+                full_name = ws.cell(row=row, column=2).value or "Не указано"
+                phone = ws.cell(row=row, column=3).value or "Не указан"
+                age = ws.cell(row=row, column=4).value or "Не указан"
+                event = ws.cell(row=row, column=5).value or "Не выбрано"
+                date = ws.cell(row=row, column=6).value or "Не указана"
+                users.append(
+                    f"👤 {full_name}\n"
+                    f"📱 {phone}\n"
+                    f"🎂 {age} лет\n"
+                    f"🏟️ {event}\n"
+                    f"📅 {date}\n"
+                    f"{'─'*15}"
+                )
+            
+            if users:
+                await message.answer("\n\n".join(users))
+            else:
+                await message.answer("📭 Данных пока нет.")
+                
     except Exception as e:
-        # Если файл не отправился - показываем текстом
-        users = []
-        for row in range(2, min(ws.max_row + 1, 20)):
-            full_name = ws.cell(row=row, column=2).value
-            phone = ws.cell(row=row, column=3).value
-            age = ws.cell(row=row, column=4).value
-            event = ws.cell(row=row, column=5).value
-            date = ws.cell(row=row, column=6).value
-            users.append(
-                f"👤 {full_name}\n📱 {phone}\n🎂 {age} лет\n🏟️ {event}\n📅 {date}\n{'─'*15}"
-            )
-        
-        if users:
-            await message.answer(f"📊 Всего: {total_users}\n\n" + "\n\n".join(users))
-        else:
-            await message.answer("📭 Данных пока нет.")
+        await message.answer(f"❌ Ошибка: {e}")
     
     finally:
+        # Удаляем временный файл
         try:
             os.unlink(temp_file.name)
         except:

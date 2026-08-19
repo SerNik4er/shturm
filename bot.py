@@ -2,11 +2,11 @@ import os
 import asyncio
 import logging
 import tempfile
+import aiohttp
 from datetime import datetime
 from openpyxl import Workbook, load_workbook
 from vkbottle.bot import Bot, Message
 from vkbottle import Keyboard, KeyboardButtonColor, Text
-from vkbottle.uploader import Uploader
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -49,10 +49,9 @@ bot = Bot(token=TOKEN)
 DATA_FILE = "users_data.xlsx"
 user_data_temp = {}
 
-# ===== ФУНКЦИИ РАБОТЫ С EXCEL =====
+# ===== ФУНКЦИИ =====
 
 def init_excel():
-    """Создает Excel-файл с заголовками, если его нет"""
     if not os.path.exists(DATA_FILE):
         wb = Workbook()
         ws = wb.active
@@ -63,7 +62,6 @@ def init_excel():
         wb.save(DATA_FILE)
 
 def save_user_data(user_id, full_name, phone, age, event):
-    """Сохраняет данные пользователя в Excel"""
     wb = load_workbook(DATA_FILE)
     ws = wb.active
     row = ws.max_row + 1
@@ -76,13 +74,10 @@ def save_user_data(user_id, full_name, phone, age, event):
     wb.save(DATA_FILE)
 
 def is_user_registered(user_id: int) -> bool:
-    """Проверяет, зарегистрирован ли пользователь"""
     if not os.path.exists(DATA_FILE):
         return False
-    
     wb = load_workbook(DATA_FILE)
     ws = wb.active
-    
     for row in range(2, ws.max_row + 1):
         if ws.cell(row=row, column=1).value == user_id:
             return True
@@ -187,12 +182,10 @@ async def register_start(message: Message):
         )
         return
     
-    # ===== ПРОВЕРКА НА ПОВТОРНУЮ РЕГИСТРАЦИЮ =====
     if is_user_registered(message.from_id):
         await message.answer(
             "⚠️ Вы уже зарегистрированы!\n\n"
-            "Чтобы посмотреть свои данные, нажмите '📊 Посмотреть данные'.\n"
-            "Если хотите изменить данные, обратитесь к администратору.",
+            "Чтобы посмотреть свои данные, нажмите '📊 Посмотреть данные'.",
             keyboard=get_main_keyboard()
         )
         return
@@ -265,17 +258,14 @@ async def cancel_action(message: Message):
 @bot.on.private_message(text="!список")
 async def admin_list_users(message: Message):
     """Отправляет список зарегистрированных пользователей"""
-    # Проверка прав админа
     if message.from_id not in ADMIN_IDS:
         await message.answer("⛔ У вас нет прав для этой команды.")
         return
     
-    # Проверяем, существует ли файл
     if not os.path.exists(DATA_FILE):
-        await message.answer("📭 Файл с данными не найден. Зарегистрированных пользователей пока нет.")
+        await message.answer("📭 Файл с данными не найден.")
         return
     
-    # Загружаем файл
     try:
         wb = load_workbook(DATA_FILE)
         ws = wb.active
@@ -283,25 +273,21 @@ async def admin_list_users(message: Message):
         await message.answer(f"❌ Ошибка чтения файла: {e}")
         return
     
-    # Проверяем, есть ли записи (строки кроме заголовка)
     if ws.max_row <= 1:
         await message.answer("📭 Зарегистрированных пользователей пока нет.")
         return
     
-    # Считаем количество пользователей
     total_users = ws.max_row - 1
     
     # Создаём временный файл
-    import tempfile
     temp_file = tempfile.NamedTemporaryFile(suffix='.txt', mode='w', encoding='utf-8', delete=False)
     
     try:
-        # Записываем заголовок
+        # Записываем всех пользователей в файл
         temp_file.write("=" * 60 + "\n")
         temp_file.write("     СПИСОК ЗАРЕГИСТРИРОВАННЫХ ПОЛЬЗОВАТЕЛЕЙ\n")
         temp_file.write("=" * 60 + "\n\n")
         
-        # Записываем всех пользователей
         for row in range(2, ws.max_row + 1):
             full_name = ws.cell(row=row, column=2).value or "Не указано"
             phone = ws.cell(row=row, column=3).value or "Не указан"
@@ -322,23 +308,44 @@ async def admin_list_users(message: Message):
         temp_file.write("=" * 60 + "\n")
         temp_file.close()
         
-        # Проверяем размер файла
-        file_size = os.path.getsize(temp_file.name)
-        if file_size == 0:
-            await message.answer("❌ Ошибка: создан пустой файл.")
-            return
-        
-        # Отправляем файл
+        # ===== ОТПРАВКА ФАЙЛА ЧЕРЕЗ VK API =====
         try:
-            from vkbottle.uploader import Uploader
-            uploader = Uploader(bot.api)
+            # 1. Получаем сервер для загрузки
+            upload_server = await bot.api.request(
+                "docs.getUploadServer",
+                {"type": "doc", "peer_id": message.peer_id}
+            )
             
+            # 2. Загружаем файл
             with open(temp_file.name, 'rb') as f:
-                attachment = await uploader.document(
-                    document=f,
-                    title="users_list.txt",
-                    peer_id=message.peer_id
+                file_data = f.read()
+            
+            async with aiohttp.ClientSession() as session:
+                form_data = aiohttp.FormData()
+                form_data.add_field(
+                    'file',
+                    file_data,
+                    filename='users_list.txt',
+                    content_type='text/plain'
                 )
+                async with session.post(
+                    upload_server['response']['upload_url'],
+                    data=form_data
+                ) as response:
+                    upload_result = await response.json()
+            
+            # 3. Сохраняем документ
+            save_result = await bot.api.request(
+                "docs.save",
+                {
+                    "file": upload_result['file'],
+                    "title": "users_list.txt"
+                }
+            )
+            
+            # 4. Получаем attachment
+            doc = save_result['response'][0]
+            attachment = f"doc{doc['owner_id']}_{doc['id']}"
             
             await message.answer(
                 f"📊 Всего зарегистрировано: {total_users}\n\n📎 Файл со списком прикреплён ниже.",
@@ -347,18 +354,15 @@ async def admin_list_users(message: Message):
             
         except Exception as e:
             # Если файл не отправился - показываем список текстом
-            users_text = f"📊 Всего зарегистрировано: {total_users}\n\n"
-            users = []
+            await message.answer(f"⚠️ Не удалось отправить файл.\n\nПоказываю список текстом:")
             
-            # Показываем до 20 пользователей (чтобы не превысить лимит ВК)
-            max_show = min(ws.max_row - 1, 20)
-            for row in range(2, max_show + 2):
+            users = []
+            for row in range(2, min(ws.max_row + 1, 20)):
                 full_name = ws.cell(row=row, column=2).value or "Не указано"
                 phone = ws.cell(row=row, column=3).value or "Не указан"
                 age = ws.cell(row=row, column=4).value or "Не указан"
                 event = ws.cell(row=row, column=5).value or "Не выбрано"
                 date = ws.cell(row=row, column=6).value or "Не указана"
-                
                 users.append(
                     f"👤 {full_name}\n"
                     f"📱 {phone}\n"
@@ -368,18 +372,15 @@ async def admin_list_users(message: Message):
                     f"{'─'*15}"
                 )
             
-            users_text += "\n\n".join(users)
-            
-            if total_users > 20:
-                users_text += f"\n\n... и ещё {total_users - 20} пользователей."
-            
-            await message.answer(users_text)
-            
+            if users:
+                await message.answer("\n\n".join(users))
+            else:
+                await message.answer("📭 Данных пока нет.")
+                
     except Exception as e:
         await message.answer(f"❌ Ошибка: {e}")
     
     finally:
-        # Удаляем временный файл
         try:
             os.unlink(temp_file.name)
         except:
@@ -400,7 +401,7 @@ async def admin_clear_users(message: Message):
     )
     user_data_temp[message.peer_id] = {"state": "waiting_for_clear"}
 
-# ===== ГЛАВНЫЙ ОБРАБОТЧИК СОСТОЯНИЙ =====
+# ===== ГЛАВНЫЙ ОБРАБОТЧИК =====
 
 @bot.on.private_message()
 async def handle_all_messages(message: Message):
@@ -413,7 +414,6 @@ async def handle_all_messages(message: Message):
 
     current_state = user_data_temp[message.peer_id].get("state")
 
-    # ===== ПОДТВЕРЖДЕНИЕ ОЧИСТКИ =====
     if current_state == "waiting_for_clear":
         text = message.text.strip().lower()
         if text == "да, очистить":
@@ -435,7 +435,6 @@ async def handle_all_messages(message: Message):
             )
             return
 
-    # ===== ФИО =====
     if current_state == "waiting_for_full_name":
         full_name = message.text.strip()
         if len(full_name.split()) < 2:
@@ -448,7 +447,6 @@ async def handle_all_messages(message: Message):
             keyboard=get_cancel_keyboard()
         )
 
-    # ===== ТЕЛЕФОН =====
     elif current_state == "waiting_for_phone":
         phone = message.text.strip()
         if len(phone) < 10:
@@ -461,7 +459,6 @@ async def handle_all_messages(message: Message):
             keyboard=get_cancel_keyboard()
         )
 
-    # ===== ВОЗРАСТ =====
     elif current_state == "waiting_for_age":
         try:
             age = int(message.text.strip())
@@ -477,7 +474,6 @@ async def handle_all_messages(message: Message):
             keyboard=get_event_keyboard()
         )
 
-    # ===== МЕРОПРИЯТИЕ =====
     elif current_state == "waiting_for_event":
         event = message.text.strip()
         if event not in EVENTS and event != "❌ Отмена":

@@ -1,6 +1,7 @@
 import os
 import asyncio
 import logging
+import tempfile
 from datetime import datetime
 from openpyxl import Workbook, load_workbook
 from vkbottle.bot import Bot, Message
@@ -18,12 +19,11 @@ TOKEN = os.getenv("VK_BOT_TOKEN")
 if not TOKEN:
     raise ValueError("❌ Токен не найден! Установите VK_BOT_TOKEN")
 
-# ===== АДМИНИСТРАТОРЫ (можно добавить несколько ID) =====
+# ===== АДМИНИСТРАТОРЫ =====
 ADMIN_IDS = [
     164876852,   # Админ 1
     21212595,# Админ 2 (ЗАМЕНИТЕ НА РЕАЛЬНЫЙ ID!)
     531011063,
-    # Добавьте сколько нужно
 ]
 
 # ===== СПИСОК ГРУПП ДЛЯ ПРОВЕРКИ ПОДПИСКИ =====
@@ -32,9 +32,10 @@ REQUIRED_GROUPS = [
     108117049,
 ]
 
-# ===== СПИСОК МЕРОПРИЯТИЙ ДЛЯ ВЫБОРА =====
+# ===== СПИСОК МЕРОПРИЯТИЙ =====
 EVENTS = [
     "Штурмовой бой - дети",
+   
 ]
 
 NOT_SUBSCRIBED_TEXT = (
@@ -73,6 +74,19 @@ def save_user_data(user_id, full_name, phone, age, event):
     ws.cell(row=row, column=6, value=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     wb.save(DATA_FILE)
 
+def is_user_registered(user_id: int) -> bool:
+    """Проверяет, зарегистрирован ли пользователь"""
+    if not os.path.exists(DATA_FILE):
+        return False
+    
+    wb = load_workbook(DATA_FILE)
+    ws = wb.active
+    
+    for row in range(2, ws.max_row + 1):
+        if ws.cell(row=row, column=1).value == user_id:
+            return True
+    return False
+
 # ===== КЛАВИАТУРЫ =====
 
 def get_main_keyboard():
@@ -97,7 +111,6 @@ def get_subscription_keyboard():
     return keyboard
 
 def get_event_keyboard():
-    """Клавиатура с выбором мероприятия"""
     keyboard = Keyboard(inline=False)
     for i, event in enumerate(EVENTS):
         keyboard.add(Text(event), color=KeyboardButtonColor.PRIMARY)
@@ -172,8 +185,20 @@ async def register_start(message: Message):
             keyboard=get_subscription_keyboard()
         )
         return
+    
+    # ===== ПРОВЕРКА НА ПОВТОРНУЮ РЕГИСТРАЦИЮ =====
+    if is_user_registered(message.from_id):
+        await message.answer(
+            "⚠️ Вы уже зарегистрированы!\n\n"
+            "Чтобы посмотреть свои данные, нажмите '📊 Посмотреть данные'.\n"
+            "Если хотите изменить данные, обратитесь к администратору.",
+            keyboard=get_main_keyboard()
+        )
+        return
+    
     if message.peer_id in user_data_temp:
         del user_data_temp[message.peer_id]
+    
     await message.answer(
         "Пожалуйста, введите ваше **ФИО** (полностью):",
         keyboard=get_cancel_keyboard()
@@ -218,7 +243,7 @@ async def view_data(message: Message):
 async def help_command(message: Message):
     await message.answer(
         "🤖 Инструкция:\n\n"
-        "📝 Регистрация - заполнить анкету\n"
+        "📝 Регистрация - заполнить анкету (доступна 1 раз)\n"
         "📊 Посмотреть данные - показать вашу анкету\n"
         "❌ Отмена - отменить текущее действие\n\n"
         "⚠️ Для использования бота нужно быть подписанным на все группы!\n\n"
@@ -239,7 +264,6 @@ async def cancel_action(message: Message):
 @bot.on.private_message(text="!список")
 async def admin_list_users(message: Message):
     """Отправляет список зарегистрированных пользователей в текстовом файле"""
-    # Проверка прав админа
     if message.from_id not in ADMIN_IDS:
         await message.answer("⛔ У вас нет прав для этой команды.")
         return
@@ -256,10 +280,8 @@ async def admin_list_users(message: Message):
         return
     
     # Создаём текстовый файл
-    import tempfile
     temp_file = tempfile.NamedTemporaryFile(suffix='.txt', mode='w', encoding='utf-8', delete=False)
     
-    # Записываем заголовок
     temp_file.write("=" * 60 + "\n")
     temp_file.write("     СПИСОК ЗАРЕГИСТРИРОВАННЫХ ПОЛЬЗОВАТЕЛЕЙ\n")
     temp_file.write("=" * 60 + "\n\n")
@@ -286,15 +308,11 @@ async def admin_list_users(message: Message):
     temp_file.write("=" * 60 + "\n")
     temp_file.close()
     
-    # Отправляем файл простым способом
+    # Отправляем файл
     try:
-        # Открываем и отправляем файл
         with open(temp_file.name, 'rb') as f:
-            # Используем upload_document из vkbottle
             from vkbottle.uploader import Uploader
             uploader = Uploader(bot.api)
-            
-            # Загружаем документ
             attachment = await uploader.document(
                 document=f,
                 title="users_list.txt",
@@ -307,62 +325,24 @@ async def admin_list_users(message: Message):
         )
         
     except Exception as e:
-        # Если ошибка с Uploader - пробуем другой способ
-        try:
-            import aiohttp
-            
-            # Получаем сервер для загрузки
-            upload_server = await bot.api.request(
-                "docs.getUploadServer",
-                {"type": "doc", "peer_id": message.peer_id}
+        # Если файл не отправился - показываем текстом
+        users = []
+        for row in range(2, min(ws.max_row + 1, 20)):
+            full_name = ws.cell(row=row, column=2).value
+            phone = ws.cell(row=row, column=3).value
+            age = ws.cell(row=row, column=4).value
+            event = ws.cell(row=row, column=5).value
+            date = ws.cell(row=row, column=6).value
+            users.append(
+                f"👤 {full_name}\n📱 {phone}\n🎂 {age} лет\n🏟️ {event}\n📅 {date}\n{'─'*15}"
             )
-            
-            # Загружаем файл
-            with open(temp_file.name, 'rb') as f:
-                file_data = f.read()
-            
-            async with aiohttp.ClientSession() as session:
-                form_data = aiohttp.FormData()
-                form_data.add_field('file', file_data, filename='users_list.txt', content_type='text/plain')
-                async with session.post(upload_server['response']['upload_url'], data=form_data) as response:
-                    upload_result = await response.json()
-            
-            # Сохраняем документ
-            save_result = await bot.api.request(
-                "docs.save",
-                {"file": upload_result['file'], "title": "users_list.txt"}
-            )
-            
-            doc = save_result['response'][0]
-            attachment = f"doc{doc['owner_id']}_{doc['id']}"
-            
-            await message.answer(
-                f"📊 Всего зарегистрировано: {total_users}\n\n📎 Файл со списком прикреплён ниже.",
-                attachment=attachment
-            )
-            
-        except Exception as e2:
-            # Если ничего не работает - отправляем текстом
-            await message.answer(f"⚠️ Не удалось отправить файл. Показываю список текстом:\n\n")
-            
-            users = []
-            for row in range(2, min(ws.max_row + 1, 20)):
-                full_name = ws.cell(row=row, column=2).value
-                phone = ws.cell(row=row, column=3).value
-                age = ws.cell(row=row, column=4).value
-                event = ws.cell(row=row, column=5).value
-                date = ws.cell(row=row, column=6).value
-                users.append(
-                    f"👤 {full_name}\n📱 {phone}\n🎂 {age} лет\n🏟️ {event}\n📅 {date}\n{'─'*15}"
-                )
-            
-            if users:
-                await message.answer(f"📊 Всего: {total_users}\n\n" + "\n\n".join(users))
-            else:
-                await message.answer("📭 Данных пока нет.")
+        
+        if users:
+            await message.answer(f"📊 Всего: {total_users}\n\n" + "\n\n".join(users))
+        else:
+            await message.answer("📭 Данных пока нет.")
     
     finally:
-        # Удаляем временный файл
         try:
             os.unlink(temp_file.name)
         except:
@@ -460,7 +440,7 @@ async def handle_all_messages(message: Message):
             keyboard=get_event_keyboard()
         )
 
-    # ===== МЕРОПРИЯТИЕ (выбор из списка) =====
+    # ===== МЕРОПРИЯТИЕ =====
     elif current_state == "waiting_for_event":
         event = message.text.strip()
         if event not in EVENTS and event != "❌ Отмена":

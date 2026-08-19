@@ -5,7 +5,7 @@ import tempfile
 from datetime import datetime
 from openpyxl import Workbook, load_workbook
 from vkbottle.bot import Bot, Message
-from vkbottle import Keyboard, KeyboardButtonColor, Text
+from vkbottle import Keyboard, KeyboardButtonColor, Text, Uploader
 from dotenv import load_dotenv
 load_dotenv()
 

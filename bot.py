@@ -269,10 +269,12 @@ async def admin_list_users(message: Message):
         await message.answer("⛔ У вас нет прав для этой команды.")
         return
     
+    # Проверяем, существует ли файл
     if not os.path.exists(DATA_FILE):
-        await message.answer("📭 Файл с данными не найден.")
+        await message.answer("📭 Файл с данными не найден. Зарегистрированных пользователей пока нет.")
         return
     
+    # Загружаем файл
     try:
         wb = load_workbook(DATA_FILE)
         ws = wb.active
@@ -280,10 +282,12 @@ async def admin_list_users(message: Message):
         await message.answer(f"❌ Ошибка чтения файла: {e}")
         return
     
+    # Проверяем, есть ли записи (строки кроме заголовка)
     if ws.max_row <= 1:
         await message.answer("📭 Зарегистрированных пользователей пока нет.")
         return
     
+    # Считаем количество пользователей
     total_users = ws.max_row - 1
     
     # Создаём временный файл
@@ -317,10 +321,15 @@ async def admin_list_users(message: Message):
         temp_file.write("=" * 60 + "\n")
         temp_file.close()
         
-        # ===== ПРОБУЕМ ОТПРАВИТЬ ФАЙЛ =====
+        # Проверяем размер файла
+        file_size = os.path.getsize(temp_file.name)
+        if file_size == 0:
+            await message.answer("❌ Ошибка: создан пустой файл.")
+            return
+        
+        # Отправляем файл
         try:
-            # ПРАВИЛЬНЫЙ ИМПОРТ!
-            from vkbottle import Uploader
+            from vkbottle.uploader import Uploader
             uploader = Uploader(bot.api)
             
             with open(temp_file.name, 'rb') as f:
@@ -337,15 +346,18 @@ async def admin_list_users(message: Message):
             
         except Exception as e:
             # Если файл не отправился - показываем список текстом
-            await message.answer(f"⚠️ Не удалось отправить файл. Ошибка: {e}\n\nПоказываю список текстом:")
-            
+            users_text = f"📊 Всего зарегистрировано: {total_users}\n\n"
             users = []
-            for row in range(2, min(ws.max_row + 1, 20)):
+            
+            # Показываем до 20 пользователей (чтобы не превысить лимит ВК)
+            max_show = min(ws.max_row - 1, 20)
+            for row in range(2, max_show + 2):
                 full_name = ws.cell(row=row, column=2).value or "Не указано"
                 phone = ws.cell(row=row, column=3).value or "Не указан"
                 age = ws.cell(row=row, column=4).value or "Не указан"
                 event = ws.cell(row=row, column=5).value or "Не выбрано"
                 date = ws.cell(row=row, column=6).value or "Не указана"
+                
                 users.append(
                     f"👤 {full_name}\n"
                     f"📱 {phone}\n"
@@ -355,15 +367,18 @@ async def admin_list_users(message: Message):
                     f"{'─'*15}"
                 )
             
-            if users:
-                await message.answer("\n\n".join(users))
-            else:
-                await message.answer("📭 Данных пока нет.")
-                
+            users_text += "\n\n".join(users)
+            
+            if total_users > 20:
+                users_text += f"\n\n... и ещё {total_users - 20} пользователей."
+            
+            await message.answer(users_text)
+            
     except Exception as e:
         await message.answer(f"❌ Ошибка: {e}")
     
     finally:
+        # Удаляем временный файл
         try:
             os.unlink(temp_file.name)
         except:

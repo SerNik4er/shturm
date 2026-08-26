@@ -498,13 +498,12 @@ async def handle_all_messages(message: Message):
         )
         del user_data_temp[message.peer_id]
         await message.answer(
-            f"✅ Регистрация на мероприятие **{event}** завершена! 🎉\n\n"
+            f"✅ Поздравляем. Теперь вы есть в списках гостей турнира **{event}** ! 🎉\n\n"
             f"Ваши данные:\n"
             f"👤 ФИО: {data.get('full_name')}\n"
             f"📱 Телефон: {data.get('phone')}\n"
             f"🎂 Возраст: {data.get('age')} лет\n"
             f"🏟️ Мероприятие: {event}\n\n"
-            f"Поздравляем. Теперь вы есть в списках гостей турнира\n"
             f"Так же, вы можете посмотреть свои данные через '📊 Посмотреть данные'",
             keyboard=get_main_keyboard()
         )

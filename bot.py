@@ -538,13 +538,12 @@ async def handle_all_messages(message: Message):
 
 # ===== ЗАПУСК =====
 
+# ===== ЗАПУСК =====
+
 if __name__ == "__main__":
     init_excel()
     print("🤖 Бот запущен!")
     print(f"✅ Проверяются группы: {REQUIRED_GROUPS}")
-    print(f"✅ Администраторы: {ADMIN_IDS}")
-    print("✅ Нажмите Ctrl+C для остановки")
-    asyncio.run(bot.run_polling())ROUPS")
     print(f"✅ Администраторы: {ADMIN_IDS}")
     print("✅ Нажмите Ctrl+C для остановки")
     asyncio.run(bot.run_polling())

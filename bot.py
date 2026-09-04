@@ -33,10 +33,17 @@ REQUIRED_GROUPS = [
     
 ]
 
+
+# ===== СПИСОК РОЛЕЙ =====
+ROLES = [
+    "Участник",
+    "Зритель",
+    "Тренер",
+]
+
 # ===== СПИСОК МЕРОПРИЯТИЙ =====
 EVENTS = [
     "Тестовый турнир",
-   
 ]
 
 NOT_SUBSCRIBED_TEXT = (
@@ -56,12 +63,12 @@ def init_excel():
         wb = Workbook()
         ws = wb.active
         ws.title = "Users"
-        headers = ["ID", "ФИО", "Телефон", "Возраст", "Мероприятие", "Дата регистрации"]
+        headers = ["ID", "ФИО", "Телефон", "Возраст", "Роль", "Мероприятие", "Дата регистрации"]
         for col, header in enumerate(headers, 1):
             ws.cell(row=1, column=col, value=header)
         wb.save(DATA_FILE)
 
-def save_user_data(user_id, full_name, phone, age, event):
+def save_user_data(user_id, full_name, phone, age, role, event):
     wb = load_workbook(DATA_FILE)
     ws = wb.active
     row = ws.max_row + 1
@@ -69,8 +76,9 @@ def save_user_data(user_id, full_name, phone, age, event):
     ws.cell(row=row, column=2, value=full_name)
     ws.cell(row=row, column=3, value=phone)
     ws.cell(row=row, column=4, value=age)
-    ws.cell(row=row, column=5, value=event)
-    ws.cell(row=row, column=6, value=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    ws.cell(row=row, column=5, value=role)
+    ws.cell(row=row, column=6, value=event)
+    ws.cell(row=row, column=7, value=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     wb.save(DATA_FILE)
 
 def is_user_registered(user_id: int) -> bool:
@@ -103,6 +111,14 @@ def get_subscription_keyboard():
     keyboard = Keyboard(inline=False)
     keyboard.add(Text("✅ Проверить подписку"), color=KeyboardButtonColor.POSITIVE)
     keyboard.row()
+    keyboard.add(Text("❌ Отмена"), color=KeyboardButtonColor.NEGATIVE)
+    return keyboard
+
+def get_role_keyboard():
+    keyboard = Keyboard(inline=False)
+    for role in ROLES:
+        keyboard.add(Text(role), color=KeyboardButtonColor.PRIMARY)
+        keyboard.row()
     keyboard.add(Text("❌ Отмена"), color=KeyboardButtonColor.NEGATIVE)
     return keyboard
 
@@ -224,7 +240,8 @@ async def view_data(message: Message):
                 f"👤 ФИО: {ws.cell(row=row, column=2).value}\n"
                 f"📱 Телефон: {ws.cell(row=row, column=3).value}\n"
                 f"🎂 Возраст: {ws.cell(row=row, column=4).value}\n"
-                f"🏟️ Мероприятие: {ws.cell(row=row, column=5).value}",
+                f"👤 Роль: {ws.cell(row=row, column=5).value}\n"
+                f"🏟️ Мероприятие: {ws.cell(row=row, column=6).value}",
                 keyboard=get_main_keyboard()
             )
             return
@@ -257,7 +274,6 @@ async def cancel_action(message: Message):
 
 @bot.on.private_message(text="!список")
 async def admin_list_users(message: Message):
-    """Отправляет список зарегистрированных пользователей"""
     if message.from_id not in ADMIN_IDS:
         await message.answer("⛔ У вас нет прав для этой команды.")
         return
@@ -279,11 +295,9 @@ async def admin_list_users(message: Message):
     
     total_users = ws.max_row - 1
     
-    # Создаём временный файл
     temp_file = tempfile.NamedTemporaryFile(suffix='.txt', mode='w', encoding='utf-8', delete=False)
     
     try:
-        # Записываем всех пользователей в файл
         temp_file.write("=" * 60 + "\n")
         temp_file.write("     СПИСОК ЗАРЕГИСТРИРОВАННЫХ ПОЛЬЗОВАТЕЛЕЙ\n")
         temp_file.write("=" * 60 + "\n\n")
@@ -292,13 +306,15 @@ async def admin_list_users(message: Message):
             full_name = ws.cell(row=row, column=2).value or "Не указано"
             phone = ws.cell(row=row, column=3).value or "Не указан"
             age = ws.cell(row=row, column=4).value or "Не указан"
-            event = ws.cell(row=row, column=5).value or "Не выбрано"
-            date = ws.cell(row=row, column=6).value or "Не указана"
+            role = ws.cell(row=row, column=5).value or "Не указана"
+            event = ws.cell(row=row, column=6).value or "Не выбрано"
+            date = ws.cell(row=row, column=7).value or "Не указана"
             
             temp_file.write(f"#{row-1}\n")
             temp_file.write(f"👤 ФИО: {full_name}\n")
             temp_file.write(f"📱 Телефон: {phone}\n")
             temp_file.write(f"🎂 Возраст: {age} лет\n")
+            temp_file.write(f"👤 Роль: {role}\n")
             temp_file.write(f"🏟️ Мероприятие: {event}\n")
             temp_file.write(f"📅 Дата регистрации: {date}\n")
             temp_file.write("─" * 40 + "\n\n")
@@ -308,42 +324,26 @@ async def admin_list_users(message: Message):
         temp_file.write("=" * 60 + "\n")
         temp_file.close()
         
-        # ===== ОТПРАВКА ФАЙЛА ЧЕРЕЗ VK API =====
         try:
-            # 1. Получаем сервер для загрузки
             upload_server = await bot.api.request(
                 "docs.getUploadServer",
                 {"type": "doc", "peer_id": message.peer_id}
             )
             
-            # 2. Загружаем файл
             with open(temp_file.name, 'rb') as f:
                 file_data = f.read()
             
             async with aiohttp.ClientSession() as session:
                 form_data = aiohttp.FormData()
-                form_data.add_field(
-                    'file',
-                    file_data,
-                    filename='users_list.txt',
-                    content_type='text/plain'
-                )
-                async with session.post(
-                    upload_server['response']['upload_url'],
-                    data=form_data
-                ) as response:
+                form_data.add_field('file', file_data, filename='users_list.txt', content_type='text/plain')
+                async with session.post(upload_server['response']['upload_url'], data=form_data) as response:
                     upload_result = await response.json()
             
-            # 3. Сохраняем документ
             save_result = await bot.api.request(
                 "docs.save",
-                {
-                    "file": upload_result['file'],
-                    "title": "users_list.txt"
-                }
+                {"file": upload_result['file'], "title": "users_list.txt"}
             )
             
-            # 4. Получаем attachment
             doc = save_result['response'][0]
             attachment = f"doc{doc['owner_id']}_{doc['id']}"
             
@@ -353,7 +353,6 @@ async def admin_list_users(message: Message):
             )
             
         except Exception as e:
-            # Если файл не отправился - показываем список текстом
             await message.answer(f"⚠️ Не удалось отправить файл.\n\nПоказываю список текстом:")
             
             users = []
@@ -361,12 +360,14 @@ async def admin_list_users(message: Message):
                 full_name = ws.cell(row=row, column=2).value or "Не указано"
                 phone = ws.cell(row=row, column=3).value or "Не указан"
                 age = ws.cell(row=row, column=4).value or "Не указан"
-                event = ws.cell(row=row, column=5).value or "Не выбрано"
-                date = ws.cell(row=row, column=6).value or "Не указана"
+                role = ws.cell(row=row, column=5).value or "Не указана"
+                event = ws.cell(row=row, column=6).value or "Не выбрано"
+                date = ws.cell(row=row, column=7).value or "Не указана"
                 users.append(
                     f"👤 {full_name}\n"
                     f"📱 {phone}\n"
                     f"🎂 {age} лет\n"
+                    f"👤 {role}\n"
                     f"🏟️ {event}\n"
                     f"📅 {date}\n"
                     f"{'─'*15}"
@@ -468,6 +469,27 @@ async def handle_all_messages(message: Message):
             await message.answer("❌ Введите число от 1 до 150:")
             return
         user_data_temp[message.peer_id]["age"] = age
+        user_data_temp[message.peer_id]["state"] = "waiting_for_role"
+        await message.answer(
+            "👤 Выберите вашу роль:",
+            keyboard=get_role_keyboard()
+        )
+
+    elif current_state == "waiting_for_role":
+        role = message.text.strip()
+        if role not in ROLES and role != "❌ Отмена":
+            await message.answer(
+                "❌ Пожалуйста, выберите роль из списка кнопок:",
+                keyboard=get_role_keyboard()
+            )
+            return
+        
+        if role == "❌ Отмена":
+            del user_data_temp[message.peer_id]
+            await message.answer("❌ Регистрация отменена.", keyboard=get_main_keyboard())
+            return
+        
+        user_data_temp[message.peer_id]["role"] = role
         user_data_temp[message.peer_id]["state"] = "waiting_for_event"
         await message.answer(
             "🏟️ Выберите мероприятие:",
@@ -494,17 +516,19 @@ async def handle_all_messages(message: Message):
             data.get("full_name", "Не указано"),
             data.get("phone", "Не указано"),
             data.get("age", "Не указано"),
+            data.get("role", "Не указана"),
             event
         )
         del user_data_temp[message.peer_id]
         await message.answer(
-            f"✅ Поздравляем. Теперь вы есть в списках гостей турнира **{event}** ! 🎉\n\n"
+            f"✅ Регистрация на мероприятие **{event}** завершена! 🎉\n\n"
             f"Ваши данные:\n"
             f"👤 ФИО: {data.get('full_name')}\n"
             f"📱 Телефон: {data.get('phone')}\n"
             f"🎂 Возраст: {data.get('age')} лет\n"
+            f"👤 Роль: {data.get('role')}\n"
             f"🏟️ Мероприятие: {event}\n\n"
-            f"Так же, вы можете посмотреть свои данные через '📊 Посмотреть данные'",
+            f"Теперь вы можете посмотреть свои данные через '📊 Посмотреть данные'",
             keyboard=get_main_keyboard()
         )
 
@@ -514,6 +538,9 @@ if __name__ == "__main__":
     init_excel()
     print("🤖 Бот запущен!")
     print(f"✅ Проверяются группы: {REQUIRED_GROUPS}")
+    print(f"✅ Администраторы: {ADMIN_IDS}")
+    print("✅ Нажмите Ctrl+C для остановки")
+    asyncio.run(bot.run_polling())ROUPS}")
     print(f"✅ Администраторы: {ADMIN_IDS}")
     print("✅ Нажмите Ctrl+C для остановки")
     asyncio.run(bot.run_polling())

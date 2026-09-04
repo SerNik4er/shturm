@@ -544,7 +544,7 @@ if __name__ == "__main__":
     print(f"✅ Проверяются группы: {REQUIRED_GROUPS}")
     print(f"✅ Администраторы: {ADMIN_IDS}")
     print("✅ Нажмите Ctrl+C для остановки")
-    asyncio.run(bot.run_polling())ROUPS}")
+    asyncio.run(bot.run_polling())ROUPS")
     print(f"✅ Администраторы: {ADMIN_IDS}")
     print("✅ Нажмите Ctrl+C для остановки")
     asyncio.run(bot.run_polling())

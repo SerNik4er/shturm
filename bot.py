@@ -274,6 +274,7 @@ async def cancel_action(message: Message):
 
 @bot.on.private_message(text="!список")
 async def admin_list_users(message: Message):
+    """Отправляет список зарегистрированных пользователей (роль в начале, построчно)"""
     if message.from_id not in ADMIN_IDS:
         await message.answer("⛔ У вас нет прав для этой команды.")
         return
@@ -295,35 +296,39 @@ async def admin_list_users(message: Message):
     
     total_users = ws.max_row - 1
     
+    # Создаём временный файл
     temp_file = tempfile.NamedTemporaryFile(suffix='.txt', mode='w', encoding='utf-8', delete=False)
     
     try:
-        temp_file.write("=" * 60 + "\n")
+        # Заголовок файла
+        temp_file.write("=" * 70 + "\n")
         temp_file.write("     СПИСОК ЗАРЕГИСТРИРОВАННЫХ ПОЛЬЗОВАТЕЛЕЙ\n")
-        temp_file.write("=" * 60 + "\n\n")
+        temp_file.write("=" * 70 + "\n\n")
         
+        # Записываем всех пользователей построчно
         for row in range(2, ws.max_row + 1):
+            role = ws.cell(row=row, column=5).value or "Не указана"
             full_name = ws.cell(row=row, column=2).value or "Не указано"
             phone = ws.cell(row=row, column=3).value or "Не указан"
             age = ws.cell(row=row, column=4).value or "Не указан"
-            role = ws.cell(row=row, column=5).value or "Не указана"
             event = ws.cell(row=row, column=6).value or "Не выбрано"
             date = ws.cell(row=row, column=7).value or "Не указана"
             
-            temp_file.write(f"#{row-1}\n")
-            temp_file.write(f"👤 ФИО: {full_name}\n")
-            temp_file.write(f"📱 Телефон: {phone}\n")
-            temp_file.write(f"🎂 Возраст: {age} лет\n")
-            temp_file.write(f"👤 Роль: {role}\n")
-            temp_file.write(f"🏟️ Мероприятие: {event}\n")
-            temp_file.write(f"📅 Дата регистрации: {date}\n")
-            temp_file.write("─" * 40 + "\n\n")
+            # Формат: [Роль] ФИО | Телефон | Возраст | Мероприятие | Дата
+            temp_file.write(
+                f"[{role}] {full_name} | "
+                f"{phone} | "
+                f"{age} лет | "
+                f"{event} | "
+                f"{date}\n"
+            )
         
-        temp_file.write("\n" + "=" * 60 + "\n")
+        temp_file.write("\n" + "=" * 70 + "\n")
         temp_file.write(f"  ИТОГО: {total_users} пользователей\n")
-        temp_file.write("=" * 60 + "\n")
+        temp_file.write("=" * 70 + "\n")
         temp_file.close()
         
+        # ===== ОТПРАВКА ФАЙЛА =====
         try:
             upload_server = await bot.api.request(
                 "docs.getUploadServer",
@@ -353,28 +358,27 @@ async def admin_list_users(message: Message):
             )
             
         except Exception as e:
+            # Если файл не отправился - показываем текстом
             await message.answer(f"⚠️ Не удалось отправить файл.\n\nПоказываю список текстом:")
             
             users = []
-            for row in range(2, min(ws.max_row + 1, 20)):
+            for row in range(2, min(ws.max_row + 1, 30)):
+                role = ws.cell(row=row, column=5).value or "Не указана"
                 full_name = ws.cell(row=row, column=2).value or "Не указано"
                 phone = ws.cell(row=row, column=3).value or "Не указан"
                 age = ws.cell(row=row, column=4).value or "Не указан"
-                role = ws.cell(row=row, column=5).value or "Не указана"
                 event = ws.cell(row=row, column=6).value or "Не выбрано"
-                date = ws.cell(row=row, column=7).value or "Не указана"
+                
                 users.append(
-                    f"👤 {full_name}\n"
-                    f"📱 {phone}\n"
-                    f"🎂 {age} лет\n"
-                    f"👤 {role}\n"
-                    f"🏟️ {event}\n"
-                    f"📅 {date}\n"
-                    f"{'─'*15}"
+                    f"[{role}] {full_name} | {phone} | {age} лет | {event}"
                 )
             
             if users:
-                await message.answer("\n\n".join(users))
+                # Показываем первых 30, остальные обрезаем
+                text = f"📊 Всего: {total_users}\n\n" + "\n".join(users)
+                if len(users) < total_users:
+                    text += f"\n\n... и ещё {total_users - len(users)} пользователей. Скачайте файл для полного списка."
+                await message.answer(text)
             else:
                 await message.answer("📭 Данных пока нет.")
                 

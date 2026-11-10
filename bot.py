@@ -302,7 +302,7 @@ async def admin_list_users(message: Message):
     total_users = ws.max_row - 1
     
     # Создаём временный файл
-    temp_file = tempfile.NamedTemporaryFile(suffix='.txt', mode='w', encoding='utf-8', delete=False)
+    temp_file = tempfile.NamedTemporaryFile(suffix='.txt', mode='w', encoding='utf-8-sig', delete=False)
     
     try:
         # Заголовок файла

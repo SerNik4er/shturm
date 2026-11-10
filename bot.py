@@ -7,6 +7,7 @@ from datetime import datetime
 from openpyxl import Workbook, load_workbook
 from vkbottle.bot import Bot, Message
 from vkbottle import Keyboard, KeyboardButtonColor, Text
+from vkbottle import DocMessagesUploader
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -30,6 +31,9 @@ ADMIN_IDS = [
 # ===== СПИСОК ГРУПП ДЛЯ ПРОВЕРКИ ПОДПИСКИ =====
 REQUIRED_GROUPS = [
     100956289,
+    197881452,
+    216333141,
+    124470103,
     
 ]
 
@@ -43,7 +47,7 @@ ROLES = [
 
 # ===== СПИСОК МЕРОПРИЯТИЙ =====
 EVENTS = [
-    "Тестовый турнир",
+    'Турнир в честь 32 летия клуба "Ратоборец-Траян".',
 ]
 
 NOT_SUBSCRIBED_TEXT = (
@@ -330,35 +334,28 @@ async def admin_list_users(message: Message):
         
         # ===== ОТПРАВКА ФАЙЛА =====
         try:
-            upload_server = await bot.api.request(
-                "docs.getUploadServer",
-                {"type": "doc", "peer_id": message.peer_id}
+            # Создаем загрузчик, привязывая его к API вашего бота
+            doc_uploader = DocMessagesUploader(bot.api)
+            
+            # Загружаем файл. Метод upload сразу возвращает готовую строку вложения (например, 'doc123456_7890')
+            # Важно: file_source принимает путь к файлу
+            attachment = await doc_uploader.upload(
+                file_source=temp_file.name,
+                peer_id=message.peer_id,
+                title="users_list.txt"  # Можно задать желаемое имя файла
             )
             
-            with open(temp_file.name, 'rb') as f:
-                file_data = f.read()
-            
-            async with aiohttp.ClientSession() as session:
-                form_data = aiohttp.FormData()
-                form_data.add_field('file', file_data, filename='users_list.txt', content_type='text/plain')
-                async with session.post(upload_server['response']['upload_url'], data=form_data) as response:
-                    upload_result = await response.json()
-            
-            save_result = await bot.api.request(
-                "docs.save",
-                {"file": upload_result['file'], "title": "users_list.txt"}
-            )
-            
-            doc = save_result['response'][0]
-            attachment = f"doc{doc['owner_id']}_{doc['id']}"
-            
+            # Отправляем сообщение с готовым вложением
             await message.answer(
                 f"📊 Всего зарегистрировано: {total_users}\n\n📎 Файл со списком прикреплён ниже.",
                 attachment=attachment
             )
             
         except Exception as e:
-            # Если файл не отправился - показываем текстом
+            # Если файл не отправился - показываем текстом (ваш резервный код)
+            # Логируем ошибку для отладки
+            print(f"Ошибка загрузки файла: {e}") 
+            
             await message.answer(f"⚠️ Не удалось отправить файл.\n\nПоказываю список текстом:")
             
             users = []
@@ -374,14 +371,17 @@ async def admin_list_users(message: Message):
                 )
             
             if users:
-                # Показываем первых 30, остальные обрезаем
                 text = f"📊 Всего: {total_users}\n\n" + "\n".join(users)
                 if len(users) < total_users:
                     text += f"\n\n... и ещё {total_users - len(users)} пользователей. Скачайте файл для полного списка."
+                
+                # Обрезаем текст, если он слишком длинный для одного сообщения ВК
+                if len(text) > 4000:
+                    text = text[:4000] + "\n\n... (текст обрезан)"
+                    
                 await message.answer(text)
             else:
-                await message.answer("📭 Данных пока нет.")
-                
+                await message.answer("📭 Данных пока нет.")        
     except Exception as e:
         await message.answer(f"❌ Ошибка: {e}")
     

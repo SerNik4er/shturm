@@ -58,12 +58,18 @@ NOT_SUBSCRIBED_TEXT = (
 
 bot = Bot(token=TOKEN)
 
-DATA_FILE = "users_data.xlsx"
+# Создаем папку для данных при запуске (если ее нет)
+os.makedirs("/app/data", exist_ok=True)
+
+# Указываем путь к файлу в постоянном хранилище
+DATA_FILE = "/app/data/users_data.xlsx"
 user_data_temp = {}
 
 # ===== ФУНКЦИИ =====
 
 def init_excel():
+    # Гарантируем, что папка существует перед созданием файла
+    os.makedirs("/app/data", exist_ok=True) 
     if not os.path.exists(DATA_FILE):
         wb = Workbook()
         ws = wb.active

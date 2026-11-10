@@ -48,7 +48,7 @@ ROLES = [
 
 # ===== СПИСОК МЕРОПРИЯТИЙ =====
 EVENTS = [
-    'Турнир в честь 32 летия клуба "Ратоборец-Траян".',
+    'В честь 32-летия клуба Ратоборец-Траян.',
 ]
 
 NOT_SUBSCRIBED_TEXT = (
@@ -497,7 +497,7 @@ async def handle_all_messages(message: Message):
         user_data_temp[message.peer_id]["role"] = role
         user_data_temp[message.peer_id]["state"] = "waiting_for_event"
         await message.answer(
-            "🏟️ Выберите мероприятие:",
+            "🏟️ Выберите турнир:",
             keyboard=get_event_keyboard()
         )
 

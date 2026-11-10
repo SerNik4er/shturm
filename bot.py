@@ -32,7 +32,7 @@ ADMIN_IDS = [
 REQUIRED_GROUPS = [
     100956289,
     #42347261,
-    #197881452,
+    197881452,
     216333141,
     124470103,
     
@@ -374,7 +374,7 @@ async def admin_list_users(message: Message):
                 event = ws.cell(row=row, column=6).value or "Не выбрано"
                 
                 users.append(
-                    f"[{role}] {full_name} | {phone} | {age} лет | {event}"
+                    f"[{role}] {full_name} | {phone} | Возраст : {age} | {event}"
                 )
             
             if users:

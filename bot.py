@@ -29,13 +29,22 @@ ADMIN_IDS = [
 ]
 
 # ===== СПИСОК ГРУПП ДЛЯ ПРОВЕРКИ ПОДПИСКИ =====
+# Все группы, на которые нужно подписаться (показываются пользователю)
 REQUIRED_GROUPS = [
     100956289,
-    #42347261,
-    197881452,
+    197881452,   # показываем, но НЕ проверяем через API
     216333141,
     124470103,
-    
+    9811513,
+]
+
+# Группы, подписку на которые реально проверяем через API
+# (исключаем те, для которых groups.isMember не работает)
+CHECKED_GROUPS = [
+    100956289,
+    216333141,
+    124470103,
+    9811513,
 ]
 
 
@@ -147,10 +156,10 @@ def get_event_keyboard():
 # ===== ПРОВЕРКА ПОДПИСКИ =====
 
 async def check_subscription(user_id: int) -> tuple:
-    if not REQUIRED_GROUPS:
+    if not CHECKED_GROUPS:
         return True, []
     not_subscribed = []
-    for group_id in REQUIRED_GROUPS:
+    for group_id in CHECKED_GROUPS:
         try:
             response = await bot.api.request(
                 "groups.isMember",

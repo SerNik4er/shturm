@@ -212,7 +212,7 @@ async def register_start(message: Message):
     is_subscribed, not_subscribed = await check_subscription(message.from_id)
     if not is_subscribed:
         await message.answer(
-            NOT_SUBSCRIBED_TEXT + get_groups_links(not_subscribed) +
+            NOT_SUBSCRIBED_TEXT + get_groups_links(REQUIRED_GROUPS) +
             "\n\nПодпишитесь и нажмите '✅ Проверить подписку'",
             keyboard=get_subscription_keyboard()
         )
